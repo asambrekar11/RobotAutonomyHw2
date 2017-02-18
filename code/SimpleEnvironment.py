@@ -30,8 +30,21 @@ class SimpleEnvironment(object):
         #
         # TODO: Generate and return a random configuration
         #
-        config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
-        config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
+        # config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
+        # config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
+        table = self.robot.GetEnv().GetBodies()[1]
+        transform = self.robot.GetTransform()
+        original_transform = self.robot.GetTransform()
+        inCollision = True;
+        while inCollision==True :
+            config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
+            config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
+            transform[0,3] = config[0]
+            transform[1,3] = config[1]
+            self.robot.SetTransform(transform)
+            if self.robot.GetEnv().CheckCollision(self.robot,table)==False :
+                self.robot.SetTransform(original_transform)
+                break
 
         return numpy.array(config)
 
@@ -48,7 +61,22 @@ class SimpleEnvironment(object):
         # TODO: Implement a function which attempts to extend from 
         #   a start configuration to a goal configuration
         #
-        pass
+        interpolated_config = [0] * 2;
+        mean_x = (start_config[0] + end_config[0])/2
+        mean_y = (start_config[1] + end_config[1])/2
+        interpolated_config[0] = mean_x
+        interpolated_config[1] = mean_y
+        table = self.robot.GetEnv().GetBodies()[1]
+        transform = self.robot.GetTransform()
+        original_transform = self.robot.GetTransform()
+        transform[0,3] = interpolated_config[0]
+        transform[1,3] = interpolated_config[1]
+        self.robot.SetTransform(transform)
+        if self.robot.GetEnv().CheckCollision(self.robot,table)==False :
+            self.robot.SetTransform(original_transform)
+            return numpy.array(interpolated_config)
+        else :
+            pass
 
     def ShortenPath(self, path, timeout=5.0):
         
