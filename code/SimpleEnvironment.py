@@ -62,10 +62,16 @@ class SimpleEnvironment(object):
         #   a start configuration to a goal configuration
         #
         interpolated_config = [0] * 2;
-        mean_x = (start_config[0] + end_config[0])/2
-        mean_y = (start_config[1] + end_config[1])/2
-        interpolated_config[0] = mean_x
-        interpolated_config[1] = mean_y
+        # direction = numpy.subtract(end_config,start_config)
+        # direction[0] = 0.001*direction[0]
+        # direction[1] = 0.001*direction[0]
+        # print direction
+        # interpolated_config = numpy.add(start_config,direction)
+        # print interpolated_config
+        dir_x = (start_config[0] + end_config[0])/2
+        dir_y = (start_config[1] + end_config[1])/2
+        interpolated_config[0] = dir_x
+        interpolated_config[1] = dir_y
         table = self.robot.GetEnv().GetBodies()[1]
         transform = self.robot.GetTransform()
         original_transform = self.robot.GetTransform()
@@ -76,7 +82,8 @@ class SimpleEnvironment(object):
             self.robot.SetTransform(original_transform)
             return numpy.array(interpolated_config)
         else :
-            pass
+            self.robot.SetTransform(original_transform)
+            return 'none'
 
     def ShortenPath(self, path, timeout=5.0):
         
