@@ -20,7 +20,7 @@ class SimpleEnvironment(object):
         # goal sampling probability
         self.p = 0.0
 
-    def SetGoalParameters(self, goal_config, p = 0.2):
+    def SetGoalParameters(self, goal_config, p=0.2):
         self.goal_config = goal_config
         self.p = p
         
@@ -37,8 +37,16 @@ class SimpleEnvironment(object):
         original_transform = self.robot.GetTransform()
         inCollision = True;
         while inCollision==True :
-            config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
-            config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
+            if numpy.random.random_sample() > self.p :
+                # print "random"
+                config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
+                config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
+            else :
+                # print "goal"
+                config[0] = self.goal_config[0]
+                config[1] = self.goal_config[1]
+                break
+
             transform[0,3] = config[0]
             transform[1,3] = config[1]
             self.robot.SetTransform(transform)
@@ -46,6 +54,7 @@ class SimpleEnvironment(object):
                 self.robot.SetTransform(original_transform)
                 break
 
+        # print config
         return numpy.array(config)
 
     def ComputeDistance(self, start_config, end_config):
@@ -62,28 +71,26 @@ class SimpleEnvironment(object):
         #   a start configuration to a goal configuration
         #
         interpolated_config = [0] * 2;
-        # direction = numpy.subtract(end_config,start_config)
-        # direction[0] = 0.001*direction[0]
-        # direction[1] = 0.001*direction[0]
-        # print direction
-        # interpolated_config = numpy.add(start_config,direction)
-        # print interpolated_config
-        dir_x = (start_config[0] + end_config[0])/2
-        dir_y = (start_config[1] + end_config[1])/2
-        interpolated_config[0] = dir_x
-        interpolated_config[1] = dir_y
+        dir_x = 0.1*(end_config[0] - start_config[0])
+        dir_y = 0.1*(end_config[1] - start_config[1])
+
+        interpolated_config[0] = start_config[0] + dir_x
+        interpolated_config[1] = start_config[1] + dir_y
+
         table = self.robot.GetEnv().GetBodies()[1]
         transform = self.robot.GetTransform()
         original_transform = self.robot.GetTransform()
+
         transform[0,3] = interpolated_config[0]
         transform[1,3] = interpolated_config[1]
+
         self.robot.SetTransform(transform)
         if self.robot.GetEnv().CheckCollision(self.robot,table)==False :
             self.robot.SetTransform(original_transform)
-            return numpy.array(interpolated_config)
+            return True , numpy.array(interpolated_config)
         else :
             self.robot.SetTransform(original_transform)
-            return 'none'
+            return False, numpy.array([0,0])
 
     def ShortenPath(self, path, timeout=5.0):
         
