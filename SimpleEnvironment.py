@@ -78,7 +78,7 @@ class SimpleEnvironment(object):
       
         dir_x=math.sqrt(epsilon*epsilon/(1+(1/ratio)*(1/ratio)))
 
-        dir_y=dir_x/ratio
+        dir_y=dir_x/abs(ratio)
 
         if dir_xm < 0:
             dir_x=dir_x*-1
