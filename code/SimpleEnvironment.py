@@ -1,5 +1,6 @@
 import numpy
 import matplotlib.pyplot as pl
+import math
 
 class SimpleEnvironment(object):
     
@@ -43,9 +44,9 @@ class SimpleEnvironment(object):
                 config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
             else :
                 # print "goal"
-                config[0] = self.goal_config[0]
-                config[1] = self.goal_config[1]
-                break
+               config[0] = self.goal_config[0]
+               config[1] = self.goal_config[1]
+               # break
 
             transform[0,3] = config[0]
             transform[1,3] = config[1]
@@ -54,8 +55,7 @@ class SimpleEnvironment(object):
                 self.robot.SetTransform(original_transform)
                 break
 
-        # print config
-        return numpy.array(config)
+        return numpy.array(numpy.append(config[0], config[1]))
 
     def ComputeDistance(self, start_config, end_config):
         #
@@ -70,9 +70,21 @@ class SimpleEnvironment(object):
         # TODO: Implement a function which attempts to extend from 
         #   a start configuration to a goal configuration
         #
+        epsilon = 0.1
         interpolated_config = [0] * 2;
-        dir_x = 0.1*(end_config[0] - start_config[0])
-        dir_y = 0.1*(end_config[1] - start_config[1])
+        dir_xm = (end_config[0] - start_config[0])
+        dir_ym = (end_config[1] - start_config[1])
+
+        ratio=dir_xm/dir_ym
+      
+        dir_x=math.sqrt(epsilon*epsilon/(1+(1/ratio)*(1/ratio)))
+
+        dir_y=dir_x/abs(ratio)
+
+        if dir_xm < 0:
+            dir_x=dir_x*-1
+        if dir_ym < 0:
+            dir_y=dir_y*-1
 
         interpolated_config[0] = start_config[0] + dir_x
         interpolated_config[1] = start_config[1] + dir_y
@@ -87,7 +99,8 @@ class SimpleEnvironment(object):
         self.robot.SetTransform(transform)
         if self.robot.GetEnv().CheckCollision(self.robot,table)==False :
             self.robot.SetTransform(original_transform)
-            return True , numpy.array(interpolated_config)
+            return True , numpy.array(numpy.append(interpolated_config[0], interpolated_config[1]))
+            
         else :
             self.robot.SetTransform(original_transform)
             return False, numpy.array([0,0])
