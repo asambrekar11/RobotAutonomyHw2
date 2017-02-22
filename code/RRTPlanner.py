@@ -6,61 +6,54 @@ class RRTPlanner(object):
     def __init__(self, planning_env, visualize):
         self.planning_env = planning_env
         self.visualize = visualize
-        
 
-    def Plan(self, start_config, goal_config, epsilon = 0.1):
-        
+    def Plan(self, start_config, goal_config, epsilon = 0.2):
+      
+        print("Epsilon=", epsilon)  
         tree = RRTTree(self.planning_env, start_config)
         plan = []
         if self.visualize and hasattr(self.planning_env, 'InitializePlot'):
             self.planning_env.InitializePlot(goal_config)
-        # TODO: Here you will implement the rrt planner
-        #  The return path should be an array
-        #  of dimension k x n where k is the number of waypoints
-        #  and n is the dimension of the robots configuration space
-        self.planning_env.SetGoalParameters(goal_config,0.5)
 
-        # start = start_config;
-        goal_reached = False
-        # tree.AddVertex(goal_config)
-        #i=0
+        self.planning_env.SetGoalParameters(goal_config)        
 
-        currentEdgeId=0
-         
-        while goal_reached == False :
-            q_rand = self.planning_env.GenerateRandomConfiguration()
-            v= q_rand == start_config
-            if v.all() == False:
-               vid, q_near = tree.GetNearestVertex(q_rand)
-               is_path, q_new = self.planning_env.Extend(q_near,q_rand)
-               if is_path != False:
-                  s = tree.AddVertex(q_new)
-                  tree.AddEdge(vid,s)
-                  self.planning_env.PlotEdge(q_new,q_near);
-                  #i=i+1
-                  # print q_rand
-                  print numpy.linalg.norm(q_new - goal_config)
-                  if numpy.linalg.norm(q_new - goal_config) < epsilon:
-                     goal_reached = True
-                     currentEdgeId=s
+        NUM_ITERATIONS = 100000
+        for iter in range(NUM_ITERATIONS):
 
+            # Check if close enough to goal
+            vid, v = tree.GetNearestVertex(goal_config)
+            d = self.planning_env.ComputeDistance(v, goal_config)
+            if (iter%10 == 0): 
+                print(iter, ' Closest dist to goal :', d)
 
-        #list(tree.edges.keys())
-        plan.append(goal_config)
-        done=False       
-        while done == False:
-            vertexId=tree.edges[currentEdgeId]
-            vid=vertexId
-            plan.append(tree.vertices[vid])
-            print tree.vertices[vid]
-            currentEdgeId=vid
-            if vid==0:
-               done=True
+            if ((d is not None) and  (d < epsilon)):
+                tree.AddEdge(vid, tree.AddVertex(goal_config))
+                if self.planning_env.visualize:
+                    self.planning_env.PlotEdge(v, goal_config)
+                print ("Goal Found !!!")
+                break
 
-        plan.reverse()
-
-        print start_config
-
-        print goal_config
+            v_rand = self.planning_env.GenerateRandomConfiguration()
+            v_near_id, v_near = tree.GetNearestVertex(v_rand)
+            v_new = self.planning_env.Extend(v_near, v_rand)
+            if v_new is not None:
+                v_new_id = tree.AddVertex(v_new)
+                tree.AddEdge(v_near_id, v_new_id)
+                if self.planning_env.visualize:
+                    self.planning_env.PlotEdge(v_near, v_new)
+    
+        # If goal found, evaluate path
+        if self.planning_env.ComputeDistance(tree.vertices[-1], goal_config) == 0:            
+            plan.append(goal_config)
+            id = len(tree.vertices)-1
+            while (id != tree.GetRootId()):
+                plan.append(tree.vertices[tree.edges[id]])
+                id = tree.edges[id]                 
         
+        plan = plan[::-1]
+        if self.visualize and hasattr(self.planning_env, 'InitializePlot'):
+            self.planning_env.InitializePlot(goal_config)
+            if self.planning_env.visualize:
+                [self.planning_env.PlotEdge(plan[i-1], plan[i]) for i in range(1,len(plan))]
+
         return plan

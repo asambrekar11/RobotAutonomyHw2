@@ -1,3 +1,5 @@
+import math
+import random
 import numpy
 
 class HerbEnvironment(object):
@@ -24,38 +26,58 @@ class HerbEnvironment(object):
         
         # goal sampling probability
         self.p = 0.0
+        self.delta = 0.01
+        self.visualize = False
 
-    def SetGoalParameters(self, goal_config, p = 0.2):
+    def SetGoalParameters(self, goal_config, p = 0.2, visualize = False, delta = .05):
         self.goal_config = goal_config
         self.p = p
+        self.visualize = visualize
+        self.delta = delta
         
+    def GenerateRandomConfiguration(self, goal_config=None):
+        if random.random() < self.p:
+            return goal_config if goal_config is not None else self.goal_config
 
-    def GenerateRandomConfiguration(self):
-        config = [0] * len(self.robot.GetActiveDOFIndices())
+        rand_conf = numpy.array(map(lambda (low, up): low + random.random()*(up-low), zip(*self.robot.GetActiveDOFLimits())))
+        while (self.HasCollisions(rand_conf)):
+            rand_conf = numpy.array(map(lambda (low, up): low + random.random()*(up-low), zip(*self.robot.GetActiveDOFLimits())))
+        return rand_conf
 
-        #
-        # TODO: Generate and return a random configuration
-        #
-        return numpy.array(config)
-
-
-    
     def ComputeDistance(self, start_config, end_config):
-        
-        #
-        # TODO: Implement a function which computes the distance between
-        # two configurations
-        #
-        pass
+        return math.sqrt(sum(map(lambda (x1, x2): math.pow(x2-x1, 2), zip(start_config, end_config))))
 
+    def ComputeDeltaLocation(self, start_config, end_config):
+        dist = self.ComputeDistance(start_config, end_config)
+        dir_cosines = map(lambda (x1, x2): (float(x2-x1))/dist, zip(start_config, end_config))
+        delta_locn = map(lambda (dir_cosine): self.delta*dir_cosine*dist, dir_cosines)
+        new_dof_vals = map(lambda (x, d): x+d, zip(start_config, delta_locn))
+        return numpy.array(new_dof_vals)
 
+    def HasCollisions(self, new_dof_vals):
+        collisions = []
+        with self.robot.GetEnv():
+            # Apply new_locn to current robot transform
+            orig_active_dof_vals = self.robot.GetActiveDOFValues()
+            self.robot.SetActiveDOFValues(new_dof_vals)
+
+            # Check for collision
+            bodies = self.robot.GetEnv().GetBodies()[1:]
+            collisions = map(lambda body: self.robot.GetEnv().CheckCollision(self.robot, body), bodies)                
+
+            # Set robot back to original transform
+            self.robot.SetActiveDOFValues(orig_active_dof_vals)
+
+        # Return new_loc as new configuration if no collision else return None
+        return reduce(lambda x1, x2: x1 or x2, collisions)
+
+    #TODO Check to see if extended point is within limits
     def Extend(self, start_config, end_config):
-        
-        #
-        # TODO: Implement a function which attempts to extend from 
-        #   a start configuration to a goal configuration
-        #
-        pass
+        # Compute new location using directional cosines
+        new_dof_vals = self.ComputeDeltaLocation(start_config, end_config)
+      
+        # Return new_loc as new configuration if no collision else return None
+        return None if self.HasCollisions(new_dof_vals) else numpy.array(new_dof_vals)
         
     def ShortenPath(self, path, timeout=5.0):
         

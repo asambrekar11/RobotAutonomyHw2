@@ -1,6 +1,8 @@
+import random
+import math
+
 import numpy
 import matplotlib.pyplot as pl
-import math
 
 class SimpleEnvironment(object):
     
@@ -19,91 +21,72 @@ class SimpleEnvironment(object):
         table.SetTransform(table_pose)
 
         # goal sampling probability
-        self.p = 0.0
+        self.p = 0.2
+        self.delta = .1
+        self.visualize = True
 
-    def SetGoalParameters(self, goal_config, p=0.2):
+    def SetGoalParameters(self, goal_config, p=.2, delta=.05, visualize=True):
         self.goal_config = goal_config
         self.p = p
+        self.delta = delta
+        self.visualize = visualize
         
-    def GenerateRandomConfiguration(self):
-        config = [0] * 2;
-        lower_limits, upper_limits = self.boundary_limits
-        #
-        # TODO: Generate and return a random configuration
-        #
-        # config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
-        # config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
-        table = self.robot.GetEnv().GetBodies()[1]
-        transform = self.robot.GetTransform()
-        original_transform = self.robot.GetTransform()
-        inCollision = True;
-        while inCollision==True :
-            if numpy.random.random_sample() > self.p :
-                # print "random"
-                config[0] = numpy.random.uniform(lower_limits[0],upper_limits[0],1)
-                config[1] = numpy.random.uniform(lower_limits[1],upper_limits[1],1)
-            else :
-                # print "goal"
-               config[0] = self.goal_config[0]
-               config[1] = self.goal_config[1]
-               # break
+    # Generate collision free configs
+    def GenerateRandomConfiguration(self, goal_config=None):
+        # Goal sampling
+        if random.random() < self.p:
+            return goal_config if goal_config is not None else self.goal_config
 
-            transform[0,3] = config[0]
-            transform[1,3] = config[1]
-            self.robot.SetTransform(transform)
-            if self.robot.GetEnv().CheckCollision(self.robot,table)==False :
-                self.robot.SetTransform(original_transform)
-                break
+        rand_locn = numpy.array(map(lambda (low, up): low + random.random()*(up-low), zip(*self.boundary_limits)))
+        while self.HasCollisions(rand_locn):
+            rand_locn = numpy.array(map(lambda (low, up): low + random.random()*(up-low), zip(*self.boundary_limits)))
+        return rand_locn
 
-        return numpy.array(numpy.append(config[0], config[1]))
-
+    # Euclidean distance
     def ComputeDistance(self, start_config, end_config):
-        #
-        # TODO: Implement a function which computes the distance between
-        # two configurations
-        return numpy.linalg.norm(numpy.array(start_config) - numpy.array(end_config))
-        
+        return math.sqrt(sum(map(lambda (x1, x2): math.pow(x2-x1, 2), zip(start_config, end_config))))
 
+    # Aooly loc to current transform and return new transform
+    def ApplyMotion(self, loc):
+        new_transform =  self.robot.GetTransform()
+        for i in range(len(loc)):
+            new_transform[i][3] = loc[i]
+        return new_transform
+
+    # Compute delta config in the direction of end_config
+    def ComputeDeltaLocation(self, start_config, end_config):
+        dist = self.ComputeDistance(start_config, end_config)
+        if dist == 0:
+            return end_config
+        dir_cosines = map(lambda (x1, x2): (float(x2-x1))/dist, zip(start_config, end_config))
+        delta_locn = map(lambda (dir_cosine): self.delta*dir_cosine*dist, dir_cosines)
+        new_locn = map(lambda (x, d): x+d, zip(start_config, delta_locn))
+        return numpy.array(new_locn)
+
+    # Check if new locn has collisions
+    def HasCollisions(self, locn):
+        collisions = []
+        with self.robot.GetEnv():
+            # Apply new_locn to current robot transform
+            orig_transform = self.robot.GetTransform()
+            new_transform = self.ApplyMotion(locn)
+            self.robot.SetTransform(new_transform)
+
+            # Check for collision
+            bodies = self.robot.GetEnv().GetBodies()[1:]
+            collisions = map(lambda body: self.robot.GetEnv().CheckCollision(self.robot, body), bodies)                
+
+            # Set robot back to original transform
+            self.robot.SetTransform(orig_transform)
+        return reduce(lambda x1, x2: x1 or x2, collisions)
+
+    #TODO Check to see if extended point is within limits
     def Extend(self, start_config, end_config):
-            
-        #
-        # TODO: Implement a function which attempts to extend from 
-        #   a start configuration to a goal configuration
-        #
-        epsilon = 0.1
-        interpolated_config = [0] * 2;
-        dir_xm = (end_config[0] - start_config[0])
-        dir_ym = (end_config[1] - start_config[1])
+        # Compute new location using directional cosines
+        new_locn = self.ComputeDeltaLocation(start_config, end_config)
 
-        ratio=dir_xm/dir_ym
-      
-        dir_x=math.sqrt(epsilon*epsilon/(1+(1/ratio)*(1/ratio)))
-
-        dir_y=dir_x/abs(ratio)
-
-        if dir_xm < 0:
-            dir_x=dir_x*-1
-        if dir_ym < 0:
-            dir_y=dir_y*-1
-
-        interpolated_config[0] = start_config[0] + dir_x
-        interpolated_config[1] = start_config[1] + dir_y
-
-        table = self.robot.GetEnv().GetBodies()[1]
-        transform = self.robot.GetTransform()
-        original_transform = self.robot.GetTransform()
-
-        transform[0,3] = interpolated_config[0]
-        transform[1,3] = interpolated_config[1]
-
-        self.robot.SetTransform(transform)
-        if self.robot.GetEnv().CheckCollision(self.robot,table)==False :
-            self.robot.SetTransform(original_transform)
-            return True , numpy.array(numpy.append(interpolated_config[0], interpolated_config[1]))
-            
-        else :
-            self.robot.SetTransform(original_transform)
-            return False, numpy.array([0,0])
+        # Return new_loc as new configuration if no collision else return None
+        return None if self.HasCollisions(new_locn) else numpy.array(new_locn)
 
     def ShortenPath(self, path, timeout=5.0):
         
