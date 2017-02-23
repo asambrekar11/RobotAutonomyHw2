@@ -95,6 +95,53 @@ class SimpleEnvironment(object):
         #  on the given path.  Terminate the shortening after the 
         #  given timout (in seconds).
         #
+        import time
+        timeout = time.time()+timeout
+        print 'initial path length: ' + repr(len(path))
+        #configuration idicies
+        test_start_config = 1
+        test_end_config = 1
+ 
+        while time.time() < timeout:
+            path_length = len(path)
+
+            #random tests
+            test_start_config = random.randrange(path_length)
+            if test_start_config+2 >= path_length:
+                continue
+            test_end_config = random.randrange(test_start_config+2,path_length)
+
+            # sequential tests will time out before full run
+            # test_end_config = test_start_config+2
+            # if test_end_config >= path_length:
+            #     continue
+
+            # while loop to check if the 2 random configurations is unobstructed
+            last_dist = 1000
+            curr_dist = self.ComputeDistance(path[test_start_config].tolist(),path[test_end_config].tolist())
+            skip_test = path[test_start_config]
+            while (curr_dist-last_dist < 0):
+                skip_test = self.Extend(skip_test, path[test_end_config])
+                if skip_test is None:
+                    break
+                last_dist = curr_dist
+                curr_dist = self.ComputeDistance(skip_test.tolist(),path[test_end_config].tolist())
+            if skip_test is not None:
+                #some debug statements
+                # print 'test_start ' + repr(test_start_config) + repr(path[test_start_config])
+                # print 'test_end ' + repr(test_end_config) + repr(path[test_end_config])
+                # print range(test_start_config+1,test_end_config)
+                del path[test_start_config+1:test_end_config]
+            else:
+                #incrememnt test_start_config for sequential tests
+                test_start_config = test_start_config+1
+        print 'shortened path length: ' + repr(len(path))
+
+        #visualize new path
+        if hasattr(self, 'InitializePlot'):
+                self.InitializePlot(path[-1])
+                if self.visualize:
+                    [self.PlotEdge(path[i-1], path[i]) for i in range(1,len(path))]
         return path
 
 
