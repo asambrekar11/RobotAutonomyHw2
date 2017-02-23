@@ -7,160 +7,82 @@ class RRTConnectPlanner(object):
         self.planning_env = planning_env
         self.visualize = visualize
         
+    def RandomGoalPlan(self, tree, goal_state):
+        v_rand = self.planning_env.GenerateRandomConfiguration(goal_state)
+        v_near_id, v_near = tree.GetNearestVertex(v_rand)
+        v_new = self.planning_env.Extend(v_near, v_rand)
+        if v_new is not None:
+            v_new_id = tree.AddVertex(v_new)
+            tree.AddEdge(v_near_id, v_new_id)
+            if self.planning_env.visualize:
+                self.planning_env.PlotEdge(v_near, v_new)
+        return v_new
 
-    def Plan(self, start_config, goal_config, epsilon = .02):
+    def ConnectPlan(self, tree, target, epsilon):
+        v_near_id, v_near = tree.GetNearestVertex(target)
+        v_new = self.planning_env.Extend(v_near, target)
+
+        # Try connecting to target by multiple extend steps
+        while (v_new is not None):
+            v_new_id = tree.AddVertex(v_new)
+            tree.AddEdge(v_near_id, v_new_id)    
+            if self.planning_env.visualize:
+                self.planning_env.PlotEdge(v_near, v_new)
+            if self.planning_env.ComputeDistance(v_new, target) < epsilon:
+                target_id = tree.AddVertex(target)
+                tree.AddEdge(v_new_id, target_id)    
+                if self.planning_env.visualize:
+                    self.planning_env.PlotEdge(v_new, target)
+                return True
+            else:
+                v_near_id, v_near = v_new_id, v_new            
+                v_new = self.planning_env.Extend(v_near, target)
+        return False
         
+
+    def Plan(self, start_config, goal_config, epsilon = 0.2):
         ftree = RRTTree(self.planning_env, start_config)
         rtree = RRTTree(self.planning_env, goal_config)
+        plan = []
 
         if self.visualize and hasattr(self.planning_env, 'InitializePlot'):
             self.planning_env.InitializePlot(goal_config)
-        # TODO: Here you will implement the rrt connect planner
-        #  The return path should be an array
-        #  of dimension k x n where k is the number of waypoints
-        #  and n is the dimension of the robots configuration space
 
-        self.planning_env.SetGoalParameters(goal_config, 0.2)
+        NUM_ITERATIONS = 100000
+        for iter in range(NUM_ITERATIONS):
 
-        # start = start_config;
-        connection_reached = False
-        # tree.AddVertex(goal_config)
-        #i=0
-        vidf=0
-        vidr=0
+            # pick random goal tree and connect path tree
+            rand_tree, rand_goal_config = (ftree, goal_config) if len(ftree.vertices) < len(rtree.vertices) else (rtree, start_config)
+            connect_tree = ftree if len(ftree.vertices) >= len(rtree.vertices) else rtree
 
-        fcheck=start_config
-        rcheck=goal_config
-         
-        while connection_reached == False :
-            greedf = False
-            greedr = False
-            q_rand = self.planning_env.GenerateRandomConfiguration()
+            # random goal plan
+            v_new = self.RandomGoalPlan(rand_tree, rand_goal_config)
+            # connect path plan
+            if (v_new is not None) and self.ConnectPlan(connect_tree, v_new, epsilon):
+                break     
 
-            #front tree
-            vf= q_rand == start_config
-            if vf.all() == False:  
-               vidf, q_nearf = ftree.GetNearestVertex(q_rand)
-               is_path, q_newf = self.planning_env.Extend(q_nearf,q_rand)
-               if is_path != False:
-                  sf = ftree.AddVertex(q_newf)
-                  ftree.AddEdge(vidf,sf)
-                  self.planning_env.PlotEdge(q_newf,q_nearf);  
-                  greedf=True     
-                  fcheck=q_newf
-               while (greedf and numpy.linalg.norm(q_rand - q_newf) > epsilon):
-                  vidf, q_nearf = ftree.GetNearestVertex(q_rand)            
-                  is_path, q_newf = self.planning_env.Extend(q_nearf,q_rand)
-                  if is_path != False:
-                     sf = ftree.AddVertex(q_newf)
-                     ftree.AddEdge(vidf,sf)
-                     self.planning_env.PlotEdge(q_newf,q_nearf);
-                     fcheck=q_newf
-                  else:
-                     greedf = False
+            if (iter%10 == 0): 
+                d_f = self.planning_env.ComputeDistance(ftree.GetNearestVertex(goal_config)[1], goal_config)
+                d_r = self.planning_env.ComputeDistance(rtree.GetNearestVertex(start_config)[1], start_config)
+                print(iter, ' Closest ftree dist to end goal :', d_f, '; Closest rtree dist to start goal :', d_r)
 
-               vidr, q_nearr = rtree.GetNearestVertex(q_newf)
-               vidf, q_nearf = ftree.GetNearestVertex(q_nearr)                 
-               is_path, q_newf = self.planning_env.Extend(q_nearf,q_nearr)
-               if is_path != False:
-                  sf = ftree.AddVertex(q_newf)
-                  ftree.AddEdge(vidf,sf)  
-                  self.planning_env.PlotEdge(q_newf,q_nearf);             
-                  greedf=True
-                  fcheck=q_newf
-               while (greedf and numpy.linalg.norm(q_newf - q_nearr) > epsilon):
-                  vidr, q_nearr = rtree.GetNearestVertex(q_newf)
-                  vidf, q_nearf = ftree.GetNearestVertex(q_nearr)  
-                  is_path, q_newf = self.planning_env.Extend(q_nearf,q_nearr)
-                  if is_path != False:
-                     sf = ftree.AddVertex(q_newf)
-                     ftree.AddEdge(vidf,sf)
-                     self.planning_env.PlotEdge(q_newf,q_nearf);
-                     fcheck=q_newf
-                  else:
-                     greedf = False
-               if numpy.linalg.norm(fcheck - q_nearr) < epsilon:
-                  connection_reached = True
-                  break
+        dist = self.planning_env.ComputeDistance(ftree.vertices[-1], rtree.vertices[-1]) 
+        print("Dist=", dist)
+        if dist < epsilon:
+            plan_f, fid = [ftree.vertices[-1]], len(ftree.vertices)-1
+            while (fid != ftree.GetRootId()):
+                plan_f.append(ftree.vertices[ftree.edges[fid]])
+                fid = ftree.edges[fid]                 
+            plan_r, rid = [rtree.vertices[-1]], len(rtree.vertices)-1
+            while (rid != rtree.GetRootId()):
+                plan_r.append(rtree.vertices[rtree.edges[rid]])
+                rid = rtree.edges[rid]                 
+            plan = plan_f[::-1]
+            plan.extend(plan_r)
 
-
-
-            #rear tree
-            vr= q_rand == goal_config
-            if vr.all() == False:  
-               vidr, q_nearr = rtree.GetNearestVertex(q_rand)
-               is_path, q_newr = self.planning_env.Extend(q_nearr,q_rand)
-               if is_path != False:
-                  sr = rtree.AddVertex(q_newr)
-                  rtree.AddEdge(vidr,sr)    
-                  rcheck=q_newr  
-                  greedr=True         
-               while (greedr and numpy.linalg.norm(q_rand - q_newr) > epsilon):
-                  vidr, q_nearr = rtree.GetNearestVertex(q_rand)
-                  is_path, q_newr = self.planning_env.Extend(q_nearr,q_rand)
-                  if is_path != False:
-                     sr = rtree.AddVertex(q_newr)
-                     rtree.AddEdge(vidr,sr)
-                     rcheck=q_newr   
-                  else:
-                     greedr = False
-
-               vidf, q_nearf = ftree.GetNearestVertex(q_newr)
-               vidr, q_nearr = rtree.GetNearestVertex(q_nearf)                 
-               is_path, q_newr = self.planning_env.Extend(q_nearr,q_nearf)
-               if is_path != False:
-                  sr = rtree.AddVertex(q_newr)
-                  rtree.AddEdge(vidr,sr) 
-                  self.planning_env.PlotEdge(q_newr,q_nearr); 
-                  rcheck=q_newr             
-                  greedr=True
-               while (greedr and numpy.linalg.norm(q_newr - q_nearf) > epsilon):
-                  vidf, q_nearf = ftree.GetNearestVertex(q_newr)
-                  vidr, q_nearr = rtree.GetNearestVertex(q_nearf)  
-                  is_path, q_newr = self.planning_env.Extend(q_nearr,q_nearf)
-                  if is_path != False:
-                     sr = rtree.AddVertex(q_newr)
-                     rtree.AddEdge(vidr,sr)
-                     self.planning_env.PlotEdge(q_newr,q_nearr);
-                     rcheck=q_newr
-                  else:
-                     greedr = False
-               if numpy.linalg.norm(rcheck - q_nearf) < epsilon:
-                  connection_reached = True
-                  break
-
-        done=False       
-        planf=[]
-        currentEdgeId=vidf
-        while done == False:
-            if currentEdgeId==0:
-               vertexId=ftree.edges[1]
-            else:
-               vertexId=ftree.edges[currentEdgeId]
-            vid=vertexId[0]
-            planf.append(ftree.vertices[vid])
-            currentEdgeId=vid
-            if vid==0:
-               done=True
-
-
-        done=False       
-        planr=[]
-        currentEdgeId=vidr
-        while done == False:
-            if currentEdgeId==0:
-               vertexId=rtree.edges[1]
-            else:
-               vertexId=rtree.edges[currentEdgeId]
-            vid=vertexId[0]
-            planr.append(rtree.vertices[vid])
-            currentEdgeId=vid
-            if vid==0:
-               done=True
-           
-        planf.reverse()
-        planf.extend(planr)
-
-        plan=planf
-        
+            if self.visualize and hasattr(self.planning_env, 'InitializePlot'):
+                self.planning_env.InitializePlot(goal_config)
+                if self.planning_env.visualize:
+                    [self.planning_env.PlotEdge(plan[i-1], plan[i]) for i in range(1,len(plan))]
+                          
         return plan
